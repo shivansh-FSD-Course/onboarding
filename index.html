@@ -116,6 +116,9 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
+    // Set PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
     function safeJsonParse(text){ try { return JSON.parse(text); } catch { return null; } }
 
@@ -127,7 +130,7 @@
         this._buildIndex();
       }
       _tokenize(text){
-        return text.toLowerCase().replace(/[^\\w\\s]/g,' ').split(/\\s+/).filter(t=>t.length>1);
+        return text.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(t=>t.length>1);
       }
       _buildIndex(){
         let total=0;
@@ -176,7 +179,7 @@
     }
 
     function chunkText(text, size=250, overlap=50){
-      const words = text.split(/\\s+/);
+      const words = text.split(/\s+/);
       const chunks=[];
       for(let i=0;i<words.length;i += (size-overlap)){
         const chunk = words.slice(i, i+size).join(' ');
@@ -203,7 +206,7 @@
         if(this.detail) lines.push(`Detail: ${this.detail}`);
         if(this.hint) lines.push(`Fix: ${this.hint}`);
         if(this.requestId) lines.push(`Request-ID: ${this.requestId}`);
-        return lines.join("\\n");
+        return lines.join("\n");
       }
     }
 
@@ -228,12 +231,12 @@
 
     class ProxyHFAPI {
       constructor(baseUrl, models){
-        this.baseUrl = baseUrl.replace(/\\/$/, "");
+        this.baseUrl = baseUrl.replace(/\/$/, "");
         this.embeddingModel = models.embeddingModel;
         this.llmModel = models.llmModel;
         this.nliModel = models.nliModel;
       }
-      setBaseUrl(url){ this.baseUrl = (url || "").trim().replace(/\\/$/, ""); }
+      setBaseUrl(url){ this.baseUrl = (url || "").trim().replace(/\/$/, ""); }
       setModels(models){
         this.embeddingModel = models.embeddingModel;
         this.llmModel = models.llmModel;
@@ -242,9 +245,9 @@
       _headers(){ return { "Content-Type": "application/json" }; } // no Authorization in browser
       formatAnyError(e){
         if(e instanceof HFError) return e.toUserString();
-        if(e?.name === "AbortError") return "NETWORK\\nDetail: Request timed out\\nFix: Try again, or use fewer docs/chunks.";
-        if(e?.name === "TypeError") return `NETWORK\\nDetail: ${e.message}\\nFix: Check your Worker URL, or disable blockers/VPN.`;
-        return `UNKNOWN\\nDetail: ${e?.message || String(e)}`;
+        if(e?.name === "AbortError") return "NETWORK\nDetail: Request timed out\nFix: Try again, or use fewer docs/chunks.";
+        if(e?.name === "TypeError") return `NETWORK\nDetail: ${e.message}\nFix: Check your Worker URL, or disable blockers/VPN.`;
+        return `UNKNOWN\nDetail: ${e?.message || String(e)}`;
       }
 
       async _fetch(model, payload, onStatus){
@@ -339,7 +342,12 @@
       }
 
       async generateAnswer(context, question, onStatus){
-        const prompt = `<s>[INST] You are a helpful onboarding assistant. Answer ONLY using the provided context. If the answer is not in the context, say: "I don't have enough information to answer this."\\n\\nContext:\\n${context}\\n\\nQuestion: ${question} [/INST]`;
+        const prompt = `<s>[INST] You are a helpful onboarding assistant. Answer ONLY using the provided context. If the answer is not in the context, say: "I don't have enough information to answer this."
+
+Context:
+${context}
+
+Question: ${question} [/INST]`;
 
         const out = await this._fetch(this.llmModel, {
           inputs: prompt,
@@ -465,7 +473,7 @@
             const content = await page.getTextContent();
             pages.push(content.items.map(it=>it.str).join(" "));
           }
-          return pages.join("\\n\\n");
+          return pages.join("\n\n");
         }
         if(ext==="docx"){
           const ab = await file.arrayBuffer();
@@ -516,7 +524,7 @@
             nextEmb.push(...out);
           } catch(e){
             const msg = api.current.formatAnyError(e);
-            setTestMsg(`Embedding error (used zero vectors for this batch):\\n\\n${msg}`);
+            setTestMsg(`Embedding error (used zero vectors for this batch):\n\n${msg}`);
             nextEmb.push(...batch.map(()=>new Array(1024).fill(0)));
           }
           const done = (i - embeddings.length + batch.length);
@@ -556,8 +564,8 @@
         }
         entail /= Math.min(2, sources.length);
 
-        const ansWords = new Set(answer.toLowerCase().split(/\\s+/));
-        const srcWords = new Set(sources.flatMap(s => s.chunk.text.toLowerCase().split(/\\s+/)));
+        const ansWords = new Set(answer.toLowerCase().split(/\s+/));
+        const srcWords = new Set(sources.flatMap(s => s.chunk.text.toLowerCase().split(/\s+/)));
         const attribution = ansWords.size ? ([...ansWords].filter(w=>srcWords.has(w)).length/ansWords.size) : 0;
 
         return { overall: 0.3*retrieval + 0.4*entail + 0.3*attribution, retrieval, entailment: entail, attribution };
@@ -582,7 +590,7 @@
           if(results.length===0){
             setMessages(prev => [...prev, {type:"assistant", content:"No relevant information found.", trust:{overall:0,retrieval:0,entailment:0,attribution:0}, sources:[], abstained:true}]);
           } else {
-            const context = results.map((r,i)=>`[Source ${i+1}]\\n${r.chunk.text}`).join("\\n\\n");
+            const context = results.map((r,i)=>`[Source ${i+1}]\n${r.chunk.text}`).join("\n\n");
             const ans = await api.current.generateAnswer(context, q);
             const trust = await calcTrust(ans, results);
             const abstain = trust.overall < trustThreshold;
@@ -599,7 +607,7 @@
           const msg = api.current.formatAnyError(e);
           setMessages(prev => [...prev, {
             type:"assistant",
-            content:`Could not answer due to an API error.\\n\\n${msg}`,
+            content:`Could not answer due to an API error.\n\n${msg}`,
             trust:{overall:0,retrieval:0,entailment:0,attribution:0},
             sources:[],
             abstained:true
@@ -632,7 +640,7 @@
           const a = await api.current.quickTestModel(embeddingModel, "embedding");
           const b = await api.current.quickTestModel(llmModel, "llm");
           const c = await api.current.quickTestModel(nliModel, "nli");
-          setTestMsg(`Model tests OK:\\n- embedding: ${a}\\n- llm: ${b}\\n- nli: ${c}`);
+          setTestMsg(`Model tests OK:\n- embedding: ${a}\n- llm: ${b}\n- nli: ${c}`);
         } catch(e){
           setTestMsg(api.current.formatAnyError(e));
         }
