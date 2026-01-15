@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAISA Onboarding Assistant</title>
+    
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- Mammoth.js for DOCX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    
+    <!-- React -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #141416;
+            --bg-tertiary: #1c1c1f;
+            --bg-hover: #242428;
+            --border: #2a2a2e;
+            --border-light: #3a3a3f;
+            --text-primary: #fafafa;
+            --text-secondary: #a0a0a5;
+            --text-muted: #606065;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.1);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.1);
+            --error: #ef4444;
+            --error-bg: rgba(239, 68, 68, 0.1);
+            --abstain: #8b5cf6;
+            --abstain-bg: rgba(139, 92, 246, 0.1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'DM Sans', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        .app-container {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .logo-text h1 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+        
+        .logo-text span {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .input-group label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        input[type="password"],
+        input[type="text"],
+        input[type="number"] {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        
+        .btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--border-light);
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* File upload area */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+        
+        .upload-zone p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .upload-zone .formats {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+        
+        /* Document list */
+        .doc-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .doc-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        
+        .doc-item .name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+        
+        .doc-item .chunks {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .doc-item .remove {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .doc-item .remove:hover {
+            color: var(--error);
+            background: var(--error-bg);
+        }
+        
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .stat {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        
+        /* Main content */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .chat-header {
+            padding: 20px 32px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+        
+        .chat-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+        
+        .chat-header p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        
+        .message {
+            max-width: 800px;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message-user {
+            align-self: flex-end;
+        }
+        
+        .message-user .message-content {
+            background: var(--accent);
+            border-radius: 16px 16px 4px 16px;
+            padding: 12px 16px;
+        }
+        
+        .message-assistant .message-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px 16px 16px 4px;
+            padding: 16px 20px;
+        }
+        
+        .message-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+        
+        /* Trust indicator */
+        .trust-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+        }
+        
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .trust-high {
+            background: var(--success-bg);
+            color: var(--success);
+        }
+        
+        .trust-medium {
+            background: var(--warning-bg);
+            color: var(--warning);
+        }
+        
+        .trust-low {
+            background: var(--error-bg);
+            color: var(--error);
+        }
+        
+        .trust-abstain {
+            background: var(--abstain-bg);
+            color: var(--abstain);
+        }
+        
+        .trust-details {
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+        
+        /* Sources */
+        .sources {
+            margin-top: 12px;
+        }
+        
+        .sources-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .source-item {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        
+        .source-item .source-doc {
+            color: var(--accent);
+            font-weight: 500;
+        }
+        
+        .source-item .source-text {
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        
+        /* Chat input */
+        .chat-input-container {
+            padding: 24px 32px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+        
+        .chat-input-wrapper {
+            display: flex;
+            gap: 12px;
+            max-width: 800px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 18px;
+            color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            resize: none;
+            min-height: 52px;
+            max-height: 150px;
+        }
+        
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        
+        .send-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            flex-shrink: 0;
+        }
+        
+        /* Loading states */
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        
+        .loading-dots {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .loading-dots span {
+            width: 6px;
+            height: 6px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        /* Status messages */
+        .status {
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-success {
+            background: var(--success-bg);
+            color: var(--success);
+        }
+        
+        .status-error {
+            background: var(--error-bg);
+            color: var(--error);
+        }
+        
+        .status-warning {
+            background: var(--warning-bg);
+            color: var(--warning);
+        }
+        
+        /* Settings panel */
+        .settings-grid {
+            display: grid;
+            gap: 12px;
+        }
+        
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .slider-header label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .slider-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--accent);
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        
+        .empty-state h3 {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .empty-state p {
+            font-size: 13px;
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-light);
+        }
+
+        /* Processing overlay */
+        .processing-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .processing-modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .processing-modal h3 {
+            margin-bottom: 12px;
+        }
+
+        .processing-modal p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
+        
+        // BM25 Implementation
+        class BM25 {
+            constructor(documents, k1 = 1.5, b = 0.75) {
+                this.k1 = k1;
+                this.b = b;
+                this.documents = documents;
+                this.avgDocLength = 0;
+                this.docLengths = [];
+                this.termFreqs = [];
+                this.docFreqs = {};
+                this.idf = {};
+                this.N = documents.length;
+                
+                this._buildIndex();
+            }
+            
+            _tokenize(text) {
+                return text.toLowerCase()
+                    .replace(/[^\w\s]/g, ' ')
+                    .split(/\s+/)
+                    .filter(t => t.length > 1);
+            }
+            
+            _buildIndex() {
+                let totalLength = 0;
+                
+                for (const doc of this.documents) {
+                    const tokens = this._tokenize(doc);
+                    this.docLengths.push(tokens.length);
+                    totalLength += tokens.length;
+                    
+                    const tf = {};
+                    const seen = new Set();
+                    
+                    for (const token of tokens) {
+                        tf[token] = (tf[token] || 0) + 1;
+                        if (!seen.has(token)) {
+                            this.docFreqs[token] = (this.docFreqs[token] || 0) + 1;
+                            seen.add(token);
+                        }
+                    }
+                    this.termFreqs.push(tf);
+                }
+                
+                this.avgDocLength = totalLength / this.N;
+                
+                // Calculate IDF
+                for (const term in this.docFreqs) {
+                    this.idf[term] = Math.log(1 + (this.N - this.docFreqs[term] + 0.5) / (this.docFreqs[term] + 0.5));
+                }
+            }
+            
+            search(query, topK = 10) {
+                const queryTokens = this._tokenize(query);
+                const scores = [];
+                
+                for (let i = 0; i < this.N; i++) {
+                    let score = 0;
+                    const docLength = this.docLengths[i];
+                    const tf = this.termFreqs[i];
+                    
+                    for (const term of queryTokens) {
+                        if (tf[term]) {
+                            const termFreq = tf[term];
+                            const idf = this.idf[term] || 0;
+                            const numerator = termFreq * (this.k1 + 1);
+                            const denominator = termFreq + this.k1 * (1 - this.b + this.b * (docLength / this.avgDocLength));
+                            score += idf * (numerator / denominator);
+                        }
+                    }
+                    scores.push({ index: i, score });
+                }
+                
+                return scores.sort((a, b) => b.score - a.score).slice(0, topK);
+            }
+        }
+
+        // Cosine similarity
+        function cosineSimilarity(a, b) {
+            let dotProduct = 0;
+            let normA = 0;
+            let normB = 0;
+            
+            for (let i = 0; i < a.length; i++) {
+                dotProduct += a[i] * b[i];
+                normA += a[i] * a[i];
+                normB += b[i] * b[i];
+            }
+            
+            return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        }
+
+        // Chunk text with overlap
+        function chunkText(text, chunkSize = 250, overlap = 50) {
+            const words = text.split(/\s+/);
+            const chunks = [];
+            
+            for (let i = 0; i < words.length; i += chunkSize - overlap) {
+                const chunk = words.slice(i, i + chunkSize).join(' ');
+                if (chunk.trim().length > 50) {
+                    chunks.push(chunk);
+                }
+            }
+            
+            return chunks;
+        }
+
+        // ============================================
+        // HUGGINGFACE API CLASS
+        // ============================================
+        
+        class HuggingFaceAPI {
+            constructor(apiKey) {
+                this.apiKey = apiKey;
+                this.baseUrl = 'https://api-inference.huggingface.co/models';
+                this.embeddingModel = 'BAAI/bge-large-en-v1.5';
+                this.llmModel = 'meta-llama/Llama-3.1-70B-Instruct';
+                this.nliModel = 'microsoft/deberta-v3-large-mnli';
+                this.rerankerModel = 'BAAI/bge-reranker-large';
+            }
+
+            async _fetch(model, payload, retries = 3) {
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(`${this.baseUrl}/${model}`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${this.apiKey}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+
+                        if (response.status === 503) {
+                            const data = await response.json();
+                            if (data.estimated_time) {
+                                await new Promise(r => setTimeout(r, data.estimated_time * 1000));
+                                continue;
+                            }
+                        }
+
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status}`);
+                        }
+
+                        return await response.json();
+                    } catch (error) {
+                        if (i === retries - 1) throw error;
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+                }
+            }
+
+            async getEmbedding(text) {
+                const result = await this._fetch(this.embeddingModel, {
+                    inputs: text,
+                    options: { wait_for_model: true }
+                });
+                return result;
+            }
+
+            async getEmbeddings(texts) {
+                const result = await this._fetch(this.embeddingModel, {
+                    inputs: texts,
+                    options: { wait_for_model: true }
+                });
+                return result;
+            }
+
+            async generateAnswer(context, question) {
+                const prompt = `<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+You are a helpful onboarding assistant. Answer questions ONLY based on the provided context. If the answer is not in the context, say "I don't have enough information in the documents to answer this question."
+
+Be concise and direct. Cite specific information from the context when possible.<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+Context:
+${context}
+
+Question: ${question}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+`;
+
+                const result = await this._fetch(this.llmModel, {
+                    inputs: prompt,
+                    parameters: {
+                        max_new_tokens: 500,
+                        temperature: 0.1,
+                        return_full_text: false,
+                        do_sample: false,
+                    },
+                    options: { wait_for_model: true }
+                });
+
+                return result[0]?.generated_text || "Failed to generate response.";
+            }
+
+            async checkEntailment(premise, hypothesis) {
+                const result = await this._fetch(this.nliModel, {
+                    inputs: `${premise} [SEP] ${hypothesis}`,
+                    options: { wait_for_model: true }
+                });
+                
+                // Result is array of {label, score}
+                const entailment = result.find(r => r.label === 'ENTAILMENT');
+                const contradiction = result.find(r => r.label === 'CONTRADICTION');
+                
+                return {
+                    entailment: entailment?.score || 0,
+                    contradiction: contradiction?.score || 0,
+                };
+            }
+
+            async rerank(query, documents) {
+                // Use cross-encoder style reranking via the model
+                const pairs = documents.map(doc => [query, doc]);
+                
+                try {
+                    const result = await this._fetch(this.rerankerModel, {
+                        inputs: pairs,
+                        options: { wait_for_model: true }
+                    });
+                    return result;
+                } catch (e) {
+                    // Fallback: return null, will skip reranking
+                    console.warn('Reranking failed, skipping:', e);
+                    return null;
+                }
+            }
+        }
+
+        // ============================================
+        // MAIN APP COMPONENT
+        // ============================================
+        
+        function App() {
+            // State
+            const [apiKey, setApiKey] = useState(localStorage.getItem('hf_api_key') || '');
+            const [apiKeyValid, setApiKeyValid] = useState(false);
+            const [documents, setDocuments] = useState([]);
+            const [chunks, setChunks] = useState([]);
+            const [embeddings, setEmbeddings] = useState([]);
+            const [bm25Index, setBm25Index] = useState(null);
+            const [messages, setMessages] = useState([]);
+            const [inputValue, setInputValue] = useState('');
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [processingStatus, setProcessingStatus] = useState('');
+            const [processingProgress, setProcessingProgress] = useState(0);
+            const [isLoading, setIsLoading] = useState(false);
+            const [error, setError] = useState('');
+            
+            // Settings
+            const [trustThreshold, setTrustThreshold] = useState(0.5);
+            const [hybridLambda, setHybridLambda] = useState(0.5);
+            const [topK, setTopK] = useState(5);
+            
+            const chatEndRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const apiRef = useRef(null);
+
+            // Initialize API
+            useEffect(() => {
+                if (apiKey) {
+                    apiRef.current = new HuggingFaceAPI(apiKey);
+                    localStorage.setItem('hf_api_key', apiKey);
+                    validateApiKey();
+                }
+            }, [apiKey]);
+
+            // Scroll to bottom on new messages
+            useEffect(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            // Validate API key
+            async function validateApiKey() {
+                try {
+                    await apiRef.current.getEmbedding('test');
+                    setApiKeyValid(true);
+                    setError('');
+                } catch (e) {
+                    setApiKeyValid(false);
+                    setError('Invalid API key or model loading...');
+                }
+            }
+
+            // Process uploaded file
+            async function processFile(file) {
+                const ext = file.name.split('.').pop().toLowerCase();
+                let text = '';
+
+                if (ext === 'pdf') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const pages = [];
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        const pageText = content.items.map(item => item.str).join(' ');
+                        pages.push(pageText);
+                    }
+                    text = pages.join('\n\n');
+                    
+                } else if (ext === 'docx') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer });
+                    text = result.value;
+                    
+                } else if (ext === 'txt' || ext === 'md') {
+                    text = await file.text();
+                    
+                } else if (ext === 'json') {
+                    const json = JSON.parse(await file.text());
+                    text = JSON.stringify(json, null, 2);
+                }
+
+                return text;
+            }
+
+            // Handle file upload
+            async function handleFileUpload(files) {
+                setIsProcessing(true);
+                setProcessingProgress(0);
+                
+                const newDocs = [];
+                const newChunks = [];
+
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    setProcessingStatus(`Reading ${file.name}...`);
+                    
+                    try {
+                        const text = await processFile(file);
+                        const fileChunks = chunkText(text).map((chunk, idx) => ({
+                            text: chunk,
+                            docName: file.name,
+                            chunkIndex: idx,
+                        }));
+                        
+                        newDocs.push({
+                            name: file.name,
+                            text: text,
+                            chunkCount: fileChunks.length,
+                        });
+                        
+                        newChunks.push(...fileChunks);
+                        setProcessingProgress((i + 1) / files.length * 50);
+                    } catch (e) {
+                        console.error(`Error processing ${file.name}:`, e);
+                    }
+                }
+
+                setDocuments(prev => [...prev, ...newDocs]);
+                const allChunks = [...chunks, ...newChunks];
+                setChunks(allChunks);
+
+                // Build BM25 index
+                setProcessingStatus('Building search index...');
+                const bm25 = new BM25(allChunks.map(c => c.text));
+                setBm25Index(bm25);
+                setProcessingProgress(60);
+
+                // Generate embeddings
+                setProcessingStatus('Generating embeddings (this may take a while)...');
+                
+                const batchSize = 10;
+                const newEmbeddings = [];
+                
+                for (let i = 0; i < allChunks.length; i += batchSize) {
+                    const batch = allChunks.slice(i, i + batchSize);
+                    try {
+                        const batchEmbeddings = await apiRef.current.getEmbeddings(
+                            batch.map(c => c.text)
+                        );
+                        newEmbeddings.push(...batchEmbeddings);
+                    } catch (e) {
+                        console.error('Embedding error:', e);
+                        // Fill with zeros on error
+                        newEmbeddings.push(...batch.map(() => new Array(1024).fill(0)));
+                    }
+                    
+                    setProcessingProgress(60 + (i / allChunks.length) * 40);
+                    setProcessingStatus(`Embedding chunks ${i + batch.length}/${allChunks.length}...`);
+                }
+                
+                setEmbeddings(newEmbeddings);
+                setIsProcessing(false);
+                setProcessingStatus('');
+            }
+
+            // Hybrid search
+            async function hybridSearch(query) {
+                if (chunks.length === 0) return [];
+
+                // BM25 scores
+                const bm25Results = bm25Index.search(query, topK * 2);
+                const bm25Scores = new Array(chunks.length).fill(0);
+                const maxBm25 = Math.max(...bm25Results.map(r => r.score), 1);
+                bm25Results.forEach(r => {
+                    bm25Scores[r.index] = r.score / maxBm25;
+                });
+
+                // Vector similarity scores
+                const queryEmbedding = await apiRef.current.getEmbedding(query);
+                const vectorScores = embeddings.map(emb => 
+                    cosineSimilarity(queryEmbedding, emb)
+                );
+                
+                // Normalize vector scores
+                const maxVector = Math.max(...vectorScores, 0.001);
+                const normVectorScores = vectorScores.map(s => s / maxVector);
+
+                // Hybrid combination
+                const hybridScores = chunks.map((chunk, i) => ({
+                    chunk,
+                    index: i,
+                    bm25Score: bm25Scores[i],
+                    vectorScore: normVectorScores[i],
+                    hybridScore: hybridLambda * bm25Scores[i] + (1 - hybridLambda) * normVectorScores[i],
+                }));
+
+                // Sort and take top K
+                return hybridScores
+                    .sort((a, b) => b.hybridScore - a.hybridScore)
+                    .slice(0, topK);
+            }
+
+            // Calculate trust score
+            async function calculateTrustScore(answer, sources, query) {
+                // Components of trust score
+                let retrievalScore = 0;
+                let entailmentScore = 0;
+                let attributionScore = 0;
+
+                // 1. Retrieval quality (average hybrid score)
+                retrievalScore = sources.reduce((acc, s) => acc + s.hybridScore, 0) / sources.length;
+
+                // 2. Entailment check (sample first 2 sources)
+                const sourcesToCheck = sources.slice(0, 2);
+                let totalEntailment = 0;
+                let totalContradiction = 0;
+                
+                for (const source of sourcesToCheck) {
+                    try {
+                        const result = await apiRef.current.checkEntailment(
+                            source.chunk.text,
+                            answer.slice(0, 500)  // Check against first 500 chars of answer
+                        );
+                        totalEntailment += result.entailment;
+                        totalContradiction += result.contradiction;
+                    } catch (e) {
+                        console.warn('NLI check failed:', e);
+                    }
+                }
+                
+                if (sourcesToCheck.length > 0) {
+                    entailmentScore = totalEntailment / sourcesToCheck.length;
+                    const contradictionPenalty = totalContradiction / sourcesToCheck.length;
+                    entailmentScore = Math.max(0, entailmentScore - contradictionPenalty * 0.5);
+                }
+
+                // 3. Attribution (word overlap)
+                const answerWords = new Set(answer.toLowerCase().split(/\s+/));
+                const sourceWords = new Set(
+                    sources.flatMap(s => s.chunk.text.toLowerCase().split(/\s+/))
+                );
+                const overlap = [...answerWords].filter(w => sourceWords.has(w)).length;
+                attributionScore = overlap / answerWords.size;
+
+                // Weighted combination
+                const trustScore = (
+                    0.3 * retrievalScore +
+                    0.4 * entailmentScore +
+                    0.3 * attributionScore
+                );
+
+                return {
+                    overall: trustScore,
+                    retrieval: retrievalScore,
+                    entailment: entailmentScore,
+                    attribution: attributionScore,
+                };
+            }
+
+            // Handle question submission
+            async function handleSubmit() {
+                if (!inputValue.trim() || isLoading || chunks.length === 0) return;
+
+                const query = inputValue.trim();
+                setInputValue('');
+                setMessages(prev => [...prev, { type: 'user', content: query }]);
+                setIsLoading(true);
+                setError('');
+
+                try {
+                    // 1. Hybrid search
+                    const searchResults = await hybridSearch(query);
+                    
+                    if (searchResults.length === 0) {
+                        setMessages(prev => [...prev, {
+                            type: 'assistant',
+                            content: "I couldn't find any relevant information in the uploaded documents.",
+                            trustScore: { overall: 0 },
+                            sources: [],
+                            abstained: true,
+                        }]);
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    // 2. Build context
+                    const context = searchResults
+                        .map((r, i) => `[Source ${i + 1} - ${r.chunk.docName}]:\n${r.chunk.text}`)
+                        .join('\n\n');
+
+                    // 3. Generate answer
+                    const answer = await apiRef.current.generateAnswer(context, query);
+
+                    // 4. Calculate trust score
+                    const trustScore = await calculateTrustScore(answer, searchResults, query);
+
+                    // 5. Decide whether to abstain
+                    const shouldAbstain = trustScore.overall < trustThreshold;
+
+                    setMessages(prev => [...prev, {
+                        type: 'assistant',
+                        content: shouldAbstain 
+                            ? "I'm not confident enough in my answer based on the available documents. The information might be incomplete or the sources don't strongly support a clear answer. Please verify with additional sources or rephrase your question."
+                            : answer,
+                        trustScore,
+                        sources: searchResults,
+                        abstained: shouldAbstain,
+                        originalAnswer: shouldAbstain ? answer : null,
+                    }]);
+
+                } catch (e) {
+                    console.error('Error:', e);
+                    setError(e.message);
+                    setMessages(prev => [...prev, {
+                        type: 'assistant',
+                        content: `Error: ${e.message}. Please try again.`,
+                        trustScore: { overall: 0 },
+                        sources: [],
+                        abstained: true,
+                    }]);
+                }
+
+                setIsLoading(false);
+            }
+
+            // Remove document
+            function removeDocument(docName) {
+                setDocuments(prev => prev.filter(d => d.name !== docName));
+                
+                const remainingChunks = chunks.filter(c => c.docName !== docName);
+                setChunks(remainingChunks);
+                
+                if (remainingChunks.length > 0) {
+                    setBm25Index(new BM25(remainingChunks.map(c => c.text)));
+                } else {
+                    setBm25Index(null);
+                    setEmbeddings([]);
+                }
+                
+                // Rebuild embeddings for remaining chunks
+                const chunkIndices = chunks
+                    .map((c, i) => c.docName !== docName ? i : -1)
+                    .filter(i => i !== -1);
+                setEmbeddings(prev => chunkIndices.map(i => prev[i]));
+            }
+
+            // Get trust level
+            function getTrustLevel(score) {
+                if (score >= 0.7) return { level: 'high', label: 'High Confidence', class: 'trust-high' };
+                if (score >= 0.5) return { level: 'medium', label: 'Medium Confidence', class: 'trust-medium' };
+                if (score >= 0.3) return { level: 'low', label: 'Low Confidence', class: 'trust-low' };
+                return { level: 'abstain', label: 'Abstained', class: 'trust-abstain' };
+            }
+
+            return (
+                <div className="app-container">
+                    {/* Processing Overlay */}
+                    {isProcessing && (
+                        <div className="processing-overlay">
+                            <div className="processing-modal">
+                                <h3>Processing Documents</h3>
+                                <p>{processingStatus}</p>
+                                <div className="progress-bar">
+                                    <div 
+                                        className="progress-fill" 
+                                        style={{ width: `${processingProgress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Sidebar */}
+                    <aside className="sidebar">
+                        <div className="logo">
+                            <div className="logo-icon">M</div>
+                            <div className="logo-text">
+                                <h1>MAISA</h1>
+                                <span>Onboarding Assistant</span>
+                            </div>
+                        </div>
+
+                        {/* API Key Section */}
+                        <div className="section">
+                            <div className="section-title">API Configuration</div>
+                            <div className="input-group">
+                                <label>HuggingFace API Key</label>
+                                <input
+                                    type="password"
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder="hf_..."
+                                />
+                            </div>
+                            {apiKey && (
+                                <div className={`status ${apiKeyValid ? 'status-success' : 'status-warning'}`}>
+                                    {apiKeyValid ? '✓ Connected' : '⏳ Validating...'}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Document Upload */}
+                        <div className="section">
+                            <div className="section-title">Documents</div>
+                            <div 
+                                className="upload-zone"
+                                onClick={() => fileInputRef.current?.click()}
+                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('dragover'); }}
+                                onDragLeave={(e) => e.currentTarget.classList.remove('dragover')}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.currentTarget.classList.remove('dragover');
+                                    if (apiKeyValid) handleFileUpload(e.dataTransfer.files);
+                                }}
+                            >
+                                <p>Drop files here or click to upload</p>
+                                <p className="formats">PDF, DOCX, TXT, JSON</p>
+                            </div>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept=".pdf,.docx,.txt,.md,.json"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                    if (apiKeyValid && e.target.files.length > 0) {
+                                        handleFileUpload(e.target.files);
+                                    }
+                                }}
+                                disabled={!apiKeyValid}
+                            />
+
+                            {documents.length > 0 && (
+                                <div className="doc-list">
+                                    {documents.map((doc, i) => (
+                                        <div key={i} className="doc-item">
+                                            <span className="name" title={doc.name}>{doc.name}</span>
+                                            <span className="chunks">{doc.chunkCount} chunks</span>
+                                            <button 
+                                                className="remove"
+                                                onClick={() => removeDocument(doc.name)}
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Stats */}
+                        {chunks.length > 0 && (
+                            <div className="section">
+                                <div className="section-title">Index Stats</div>
+                                <div className="stats">
+                                    <div className="stat">
+                                        <div className="stat-value">{documents.length}</div>
+                                        <div className="stat-label">Documents</div>
+                                    </div>
+                                    <div className="stat">
+                                        <div className="stat-value">{chunks.length}</div>
+                                        <div className="stat-label">Chunks</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Settings */}
+                        <div className="section">
+                            <div className="section-title">Settings</div>
+                            <div className="settings-grid">
+                                <div className="slider-group">
+                                    <div className="slider-header">
+                                        <label>Trust Threshold</label>
+                                        <span className="slider-value">{trustThreshold.toFixed(2)}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.05"
+                                        value={trustThreshold}
+                                        onChange={(e) => setTrustThreshold(parseFloat(e.target.value))}
+                                    />
+                                </div>
+                                <div className="slider-group">
+                                    <div className="slider-header">
+                                        <label>Hybrid λ (BM25 ↔ Vector)</label>
+                                        <span className="slider-value">{hybridLambda.toFixed(2)}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.05"
+                                        value={hybridLambda}
+                                        onChange={(e) => setHybridLambda(parseFloat(e.target.value))}
+                                    />
+                                </div>
+                                <div className="slider-group">
+                                    <div className="slider-header">
+                                        <label>Top-K Results</label>
+                                        <span className="slider-value">{topK}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="3"
+                                        max="10"
+                                        step="1"
+                                        value={topK}
+                                        onChange={(e) => setTopK(parseInt(e.target.value))}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Main Content */}
+                    <main className="main-content">
+                        <header className="chat-header">
+                            <h2>Ask about your documents</h2>
+                            <p>Answers are verified against source material with trust scoring</p>
+                        </header>
+
+                        <div className="chat-messages">
+                            {messages.length === 0 ? (
+                                <div className="empty-state">
+                                    <h3>No messages yet</h3>
+                                    <p>Upload documents and ask a question to get started</p>
+                                </div>
+                            ) : (
+                                messages.map((msg, i) => (
+                                    <div key={i} className={`message message-${msg.type}`}>
+                                        <div className="message-label">
+                                            {msg.type === 'user' ? 'You' : 'MAISA'}
+                                        </div>
+                                        <div className="message-content">
+                                            {msg.content}
+                                            
+                                            {msg.type === 'assistant' && msg.trustScore && (
+                                                <>
+                                                    <div className="trust-indicator">
+                                                        <span className={`trust-badge ${getTrustLevel(msg.trustScore.overall).class}`}>
+                                                            {getTrustLevel(msg.trustScore.overall).label}
+                                                            <span style={{ marginLeft: '4px' }}>
+                                                                {(msg.trustScore.overall * 100).toFixed(0)}%
+                                                            </span>
+                                                        </span>
+                                                        <span className="trust-details">
+                                                            R: {(msg.trustScore.retrieval * 100).toFixed(0)}% | 
+                                                            E: {(msg.trustScore.entailment * 100).toFixed(0)}% | 
+                                                            A: {(msg.trustScore.attribution * 100).toFixed(0)}%
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {msg.sources && msg.sources.length > 0 && (
+                                                        <div className="sources">
+                                                            <div className="sources-title">Sources ({msg.sources.length})</div>
+                                                            {msg.sources.slice(0, 3).map((src, j) => (
+                                                                <div key={j} className="source-item">
+                                                                    <span className="source-doc">{src.chunk.docName}</span>
+                                                                    <span style={{ marginLeft: '8px', color: 'var(--text-muted)', fontSize: '10px' }}>
+                                                                        Score: {(src.hybridScore * 100).toFixed(0)}%
+                                                                    </span>
+                                                                    <div className="source-text">
+                                                                        {src.chunk.text.slice(0, 200)}...
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                            
+                            {isLoading && (
+                                <div className="message message-assistant">
+                                    <div className="message-label">MAISA</div>
+                                    <div className="message-content">
+                                        <div className="loading">
+                                            <div className="loading-dots">
+                                                <span></span>
+                                                <span></span>
+                                                <span></span>
+                                            </div>
+                                            Searching and verifying...
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <div ref={chatEndRef} />
+                        </div>
+
+                        <div className="chat-input-container">
+                            {error && (
+                                <div className="status status-error" style={{ marginBottom: '12px' }}>
+                                    {error}
+                                </div>
+                            )}
+                            <div className="chat-input-wrapper">
+                                <textarea
+                                    className="chat-input"
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSubmit();
+                                        }
+                                    }}
+                                    placeholder={chunks.length === 0 
+                                        ? "Upload documents first..." 
+                                        : "Ask a question about your documents..."
+                                    }
+                                    disabled={chunks.length === 0 || isLoading}
+                                    rows={1}
+                                />
+                                <button 
+                                    className="btn btn-primary send-btn"
+                                    onClick={handleSubmit}
+                                    disabled={chunks.length === 0 || isLoading || !inputValue.trim()}
+                                >
+                                    →
+                                </button>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        // Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
