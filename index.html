@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MAISA Onboarding Assistant</title>
+  <title>MAISA Onboarding Assistant (Proxy Mode)</title>
 
   <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -42,7 +42,7 @@
     .secTitle{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:10px}
     label{font-size:13px;color:#5c4d3a}
     input,select,textarea,button{font:inherit}
-    input[type="password"], input[type="text"], select{
+    input[type="text"], select{
       width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;
       font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--text)
     }
@@ -105,6 +105,9 @@
     .stat{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center}
     .statNum{font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:700;color:var(--accent)}
     .statLbl{font-size:11px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;border-radius:999px;padding:6px 10px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:#5c4d3a}
+    .warnBox{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px}
+    .warnBox b{color:var(--accent)}
   </style>
 </head>
 <body>
@@ -113,11 +116,9 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // ---------- Utils ----------
     function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
     function safeJsonParse(text){ try { return JSON.parse(text); } catch { return null; } }
 
-    // ---------- BM25 ----------
     class BM25 {
       constructor(documents, k1=1.5, b=0.75){
         this.k1=k1; this.b=b; this.documents=documents;
@@ -126,7 +127,7 @@
         this._buildIndex();
       }
       _tokenize(text){
-        return text.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(t=>t.length>1);
+        return text.toLowerCase().replace(/[^\\w\\s]/g,' ').split(/\\s+/).filter(t=>t.length>1);
       }
       _buildIndex(){
         let total=0;
@@ -175,7 +176,7 @@
     }
 
     function chunkText(text, size=250, overlap=50){
-      const words = text.split(/\s+/);
+      const words = text.split(/\\s+/);
       const chunks=[];
       for(let i=0;i<words.length;i += (size-overlap)){
         const chunk = words.slice(i, i+size).join(' ');
@@ -184,7 +185,6 @@
       return chunks;
     }
 
-    // ---------- Hugging Face error model ----------
     class HFError extends Error {
       constructor({ status, category, model, detail, hint, requestId }){
         super("Hugging Face request failed");
@@ -203,16 +203,16 @@
         if(this.detail) lines.push(`Detail: ${this.detail}`);
         if(this.hint) lines.push(`Fix: ${this.hint}`);
         if(this.requestId) lines.push(`Request-ID: ${this.requestId}`);
-        return lines.join("\n");
+        return lines.join("\\n");
       }
     }
 
     function classifyHF(status, detail=""){
       const d = (detail || "").toLowerCase();
-      if(status===401) return {cat:"AUTH", hint:"Invalid/expired token. Regenerate it (starts with hf_)."};
+      if(status===401) return {cat:"AUTH", hint:"Worker is not sending a valid token to Hugging Face. Check Cloudflare secret HF_TOKEN."};
       if(status===403){
         if(d.includes("inference") || d.includes("provider") || d.includes("scope") || d.includes("permission")){
-          return {cat:"PERMISSION", hint:"Your token is missing Inference permission. In HF token settings, enable: Inference → Make calls to Inference Providers."};
+          return {cat:"PERMISSION", hint:"Your HF token is missing Inference permission. In HF token settings, enable: Inference → Make calls to Inference Providers."};
         }
         if(d.includes("gated") || d.includes("accept") || d.includes("terms") || d.includes("license")){
           return {cat:"GATED", hint:"Model is gated. Accept the model terms AND enable: Repositories → Read access to all public gated repos you can access."};
@@ -222,40 +222,34 @@
       if(status===429) return {cat:"RATE_LIMIT", hint:"Rate limit. Wait, reduce calls/batch size, or upgrade."};
       if(status===503) return {cat:"MODEL_LOADING", hint:"Model is loading. Retry after the estimated time."};
       if(status===400 || status===422) return {cat:"BAD_REQUEST", hint:"Bad request. Payload/parameters may not match the model pipeline."};
-      if(status>=500) return {cat:"SERVER", hint:"HF server error. Retry later."};
+      if(status>=500) return {cat:"SERVER", hint:"Server error. Retry later."};
       return {cat:"UNKNOWN", hint:"Unknown error. Check details."};
     }
 
-    // ---------- HuggingFace API ----------
-    class HuggingFaceAPI {
-      constructor(apiKey, models){
-        this.apiKey = apiKey;
-        this.baseUrl = 'https://super-king-a664.misha17031.workers.dev/hf';
+    class ProxyHFAPI {
+      constructor(baseUrl, models){
+        this.baseUrl = baseUrl.replace(/\\/$/, "");
         this.embeddingModel = models.embeddingModel;
         this.llmModel = models.llmModel;
         this.nliModel = models.nliModel;
       }
-
+      setBaseUrl(url){ this.baseUrl = (url || "").trim().replace(/\\/$/, ""); }
       setModels(models){
         this.embeddingModel = models.embeddingModel;
         this.llmModel = models.llmModel;
         this.nliModel = models.nliModel;
       }
-
-      _headers(){
-        return { "Authorization": `Bearer ${this.apiKey}`, "Content-Type": "application/json" };
-      }
-
+      _headers(){ return { "Content-Type": "application/json" }; } // no Authorization in browser
       formatAnyError(e){
         if(e instanceof HFError) return e.toUserString();
-        if(e?.name === "AbortError") return "NETWORK\nDetail: Request timed out\nFix: Try again, or use fewer docs/chunks.";
-        if(e?.name === "TypeError") return `NETWORK\nDetail: ${e.message}\nFix: CORS/adblock/VPN can block browser fetch. Try another browser, disable blockers, or run behind a small server proxy.`;
-        return `UNKNOWN\nDetail: ${e?.message || String(e)}`;
+        if(e?.name === "AbortError") return "NETWORK\\nDetail: Request timed out\\nFix: Try again, or use fewer docs/chunks.";
+        if(e?.name === "TypeError") return `NETWORK\\nDetail: ${e.message}\\nFix: Check your Worker URL, or disable blockers/VPN.`;
+        return `UNKNOWN\\nDetail: ${e?.message || String(e)}`;
       }
 
       async _fetch(model, payload, onStatus){
         const url = `${this.baseUrl}/${model}`;
-        const maxAttempts = 8;
+        const maxAttempts = 6;
 
         for(let attempt=1; attempt<=maxAttempts; attempt++){
           const controller = new AbortController();
@@ -272,9 +266,7 @@
             });
           } catch(err){
             clearTimeout(t);
-            if(attempt === maxAttempts){
-              throw err;
-            }
+            if(attempt === maxAttempts) throw err;
             if(onStatus) onStatus(`Network issue… retrying (${attempt+1}/${maxAttempts})`);
             await sleep(1200*attempt);
             continue;
@@ -287,7 +279,6 @@
             resp.headers.get("x-amzn-trace-id") ||
             resp.headers.get("x-correlation-id");
 
-          // Model loading
           if(resp.status === 503){
             let wait=10;
             try{
@@ -299,7 +290,6 @@
             continue;
           }
 
-          // Rate limit
           if(resp.status === 429){
             const retryAfter = Number(resp.headers.get("retry-after") || "0");
             const sleepMs = retryAfter>0 ? retryAfter*1000 : 2000*attempt;
@@ -314,7 +304,6 @@
             const detail = j?.error || j?.message || j?.detail || raw || `HTTP ${resp.status}`;
             const {cat, hint} = classifyHF(resp.status, detail);
 
-            // Hard-stop errors: do not spam retries
             if([401,403,400,422].includes(resp.status) || attempt === maxAttempts){
               throw new HFError({ status: resp.status, category: cat, model, detail, hint, requestId });
             }
@@ -336,28 +325,21 @@
         const out = await this._fetch(this.embeddingModel, { inputs: text, options:{ wait_for_model:true } }, onStatus);
         if(Array.isArray(out) && typeof out[0] === "number") return out;
         if(Array.isArray(out) && Array.isArray(out[0]) && typeof out[0][0] === "number") return out[0];
-        throw new HFError({
-          status:null, category:"BAD_REQUEST", model:this.embeddingModel,
+        throw new HFError({ status:null, category:"BAD_REQUEST", model:this.embeddingModel,
           detail:`Unexpected embedding response: ${JSON.stringify(out).slice(0,350)}`,
-          hint:"Embedding model returned unexpected format. Try another embedding model.",
-          requestId:null
-        });
+          hint:"Embedding model returned unexpected format. Try another embedding model.", requestId:null });
       }
 
       async getEmbeddings(texts, onStatus){
         const out = await this._fetch(this.embeddingModel, { inputs: texts, options:{ wait_for_model:true } }, onStatus);
         if(Array.isArray(out) && Array.isArray(out[0])) return out;
-        throw new HFError({
-          status:null, category:"BAD_REQUEST", model:this.embeddingModel,
+        throw new HFError({ status:null, category:"BAD_REQUEST", model:this.embeddingModel,
           detail:`Unexpected batch embedding response: ${JSON.stringify(out).slice(0,350)}`,
-          hint:"Batch embedding format unexpected. Reduce batch size or change model.",
-          requestId:null
-        });
+          hint:"Batch embedding format unexpected. Reduce batch size or change model.", requestId:null });
       }
 
       async generateAnswer(context, question, onStatus){
-        // Llama 3 Instruct style prompt (works with most llama instruct repos)
-        const prompt = `<s>[INST] You are a helpful onboarding assistant. Answer ONLY using the provided context. If the answer is not in the context, say: "I don't have enough information to answer this."\n\nContext:\n${context}\n\nQuestion: ${question} [/INST]`;
+        const prompt = `<s>[INST] You are a helpful onboarding assistant. Answer ONLY using the provided context. If the answer is not in the context, say: "I don't have enough information to answer this."\\n\\nContext:\\n${context}\\n\\nQuestion: ${question} [/INST]`;
 
         const out = await this._fetch(this.llmModel, {
           inputs: prompt,
@@ -368,23 +350,17 @@
         if(Array.isArray(out) && out[0]?.generated_text) return out[0].generated_text;
         if(out?.generated_text) return out.generated_text;
 
-        throw new HFError({
-          status:null, category:"BAD_REQUEST", model:this.llmModel,
+        throw new HFError({ status:null, category:"BAD_REQUEST", model:this.llmModel,
           detail:`Unexpected LLM response: ${JSON.stringify(out).slice(0,350)}`,
-          hint:"LLM response format unexpected. The model might be using a different pipeline.",
-          requestId:null
-        });
+          hint:"LLM response format unexpected. The model might be using a different pipeline.", requestId:null });
       }
 
       async checkEntailment(premise, hypothesis, onStatus){
         const out = await this._fetch(this.nliModel, { inputs: `${premise} [SEP] ${hypothesis}`, options:{ wait_for_model:true } }, onStatus);
         if(!Array.isArray(out)){
-          throw new HFError({
-            status:null, category:"BAD_REQUEST", model:this.nliModel,
+          throw new HFError({ status:null, category:"BAD_REQUEST", model:this.nliModel,
             detail:`Unexpected NLI response: ${JSON.stringify(out).slice(0,350)}`,
-            hint:"NLI response format unexpected. Try a different MNLI model.",
-            requestId:null
-          });
+            hint:"NLI response format unexpected. Try a different MNLI model.", requestId:null });
         }
         const ent = out.find(r => r.label === "ENTAILMENT");
         const con = out.find(r => r.label === "CONTRADICTION");
@@ -392,27 +368,19 @@
       }
 
       async quickTestModel(modelId, kind){
-        // kind: "embedding" | "llm" | "nli"
-        if(kind === "embedding"){
-          await this._fetch(modelId, { inputs:"test", options:{ wait_for_model:true } });
-          return "OK";
-        }
+        if(kind === "embedding"){ await this._fetch(modelId, { inputs:"test", options:{ wait_for_model:true } }); return "OK"; }
         if(kind === "llm"){
-          const prompt = "Say OK.";
-          const out = await this._fetch(modelId, { inputs: prompt, parameters:{ max_new_tokens: 8, do_sample:false }, options:{ wait_for_model:true } });
+          const out = await this._fetch(modelId, { inputs: "Say OK.", parameters:{ max_new_tokens: 8, do_sample:false }, options:{ wait_for_model:true } });
           return (Array.isArray(out) ? (out[0]?.generated_text || "OK") : (out?.generated_text || "OK"));
         }
-        if(kind === "nli"){
-          await this._fetch(modelId, { inputs:"A [SEP] A", options:{ wait_for_model:true } });
-          return "OK";
-        }
+        if(kind === "nli"){ await this._fetch(modelId, { inputs:"A [SEP] A", options:{ wait_for_model:true } }); return "OK"; }
         return "Unknown kind";
       }
     }
 
-    // ---------- App ----------
     function App(){
-      const [apiKey, setApiKey] = useState(localStorage.getItem("hf_api_key") || "");
+      const [proxyUrl, setProxyUrl] = useState(localStorage.getItem("proxy_url") || "https://super-king-a664.misha17031.workers.dev/hf");
+
       const [status, setStatus] = useState("idle");
       const [statusMsg, setStatusMsg] = useState("");
       const [documents, setDocuments] = useState([]);
@@ -429,7 +397,6 @@
       const [hybridLambda, setHybridLambda] = useState(0.5);
       const [topK, setTopK] = useState(5);
 
-      // models (editable)
       const [embeddingModel, setEmbeddingModel] = useState(localStorage.getItem("hf_embedding_model") || "BAAI/bge-large-en-v1.5");
       const [llmModel, setLlmModel] = useState(localStorage.getItem("hf_llm_model") || "meta-llama/Meta-Llama-3-8B-Instruct");
       const [nliModel, setNliModel] = useState(localStorage.getItem("hf_nli_model") || "microsoft/deberta-v3-large-mnli");
@@ -442,37 +409,34 @@
 
       useEffect(()=>{ chatEnd.current?.scrollIntoView({behavior:"smooth"}); }, [messages, loading]);
 
-      // persist models
       useEffect(()=>{
         localStorage.setItem("hf_embedding_model", embeddingModel);
         localStorage.setItem("hf_llm_model", llmModel);
         localStorage.setItem("hf_nli_model", nliModel);
-        if(api.current){
-          api.current.setModels({ embeddingModel, llmModel, nliModel });
-        }
+        if(api.current) api.current.setModels({ embeddingModel, llmModel, nliModel });
       }, [embeddingModel, llmModel, nliModel]);
 
       useEffect(()=>{
-        if(apiKey){
-          localStorage.setItem("hf_api_key", apiKey);
-          api.current = new HuggingFaceAPI(apiKey, { embeddingModel, llmModel, nliModel });
-          if(timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(()=>validateKey(), 500);
-        } else {
-          setStatus("idle"); setStatusMsg("");
-        }
+        localStorage.setItem("proxy_url", proxyUrl);
+        if(api.current) api.current.setBaseUrl(proxyUrl);
+        if(timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(()=>validateProxy(), 400);
         return ()=>{ if(timer.current) clearTimeout(timer.current); };
-      }, [apiKey]);
+      }, [proxyUrl]);
 
-      async function validateKey(){
-        if(!apiKey) return;
-        if(!apiKey.startsWith("hf_")){
+      useEffect(()=>{
+        api.current = new ProxyHFAPI(proxyUrl, { embeddingModel, llmModel, nliModel });
+        validateProxy();
+      }, []);
+
+      async function validateProxy(){
+        if(!proxyUrl || !proxyUrl.startsWith("http")){
           setStatus("error");
-          setStatusMsg('API key should start with "hf_"');
+          setStatusMsg("Proxy URL is invalid. It must start with https://");
           return;
         }
         setStatus("loading");
-        setStatusMsg("Connecting to Hugging Face… (testing embedding model)");
+        setStatusMsg("Connecting to Cloudflare Worker… (testing embedding model)");
         try{
           await api.current.getEmbedding("test", (m)=>setStatusMsg(m));
           setStatus("connected");
@@ -501,7 +465,7 @@
             const content = await page.getTextContent();
             pages.push(content.items.map(it=>it.str).join(" "));
           }
-          return pages.join("\n\n");
+          return pages.join("\\n\\n");
         }
         if(ext==="docx"){
           const ab = await file.arrayBuffer();
@@ -541,7 +505,6 @@
         setBm25Index(new BM25(allChunks.map(c=>c.text)));
         setProcProgress(55);
 
-        // embeddings
         const batchSize = 10;
         const nextEmb = [...embeddings];
 
@@ -552,9 +515,8 @@
             const out = await api.current.getEmbeddings(batch.map(b=>b.text), (m)=>setProcStatus(m));
             nextEmb.push(...out);
           } catch(e){
-            // keep app working, but tell user exactly what failed
             const msg = api.current.formatAnyError(e);
-            setTestMsg(`Embedding error (used zero vectors for this batch):\n\n${msg}`);
+            setTestMsg(`Embedding error (used zero vectors for this batch):\\n\\n${msg}`);
             nextEmb.push(...batch.map(()=>new Array(1024).fill(0)));
           }
           const done = (i - embeddings.length + batch.length);
@@ -594,8 +556,8 @@
         }
         entail /= Math.min(2, sources.length);
 
-        const ansWords = new Set(answer.toLowerCase().split(/\s+/));
-        const srcWords = new Set(sources.flatMap(s => s.chunk.text.toLowerCase().split(/\s+/)));
+        const ansWords = new Set(answer.toLowerCase().split(/\\s+/));
+        const srcWords = new Set(sources.flatMap(s => s.chunk.text.toLowerCase().split(/\\s+/)));
         const attribution = ansWords.size ? ([...ansWords].filter(w=>srcWords.has(w)).length/ansWords.size) : 0;
 
         return { overall: 0.3*retrieval + 0.4*entail + 0.3*attribution, retrieval, entailment: entail, attribution };
@@ -620,7 +582,7 @@
           if(results.length===0){
             setMessages(prev => [...prev, {type:"assistant", content:"No relevant information found.", trust:{overall:0,retrieval:0,entailment:0,attribution:0}, sources:[], abstained:true}]);
           } else {
-            const context = results.map((r,i)=>`[Source ${i+1}]\n${r.chunk.text}`).join("\n\n");
+            const context = results.map((r,i)=>`[Source ${i+1}]\\n${r.chunk.text}`).join("\\n\\n");
             const ans = await api.current.generateAnswer(context, q);
             const trust = await calcTrust(ans, results);
             const abstain = trust.overall < trustThreshold;
@@ -637,7 +599,7 @@
           const msg = api.current.formatAnyError(e);
           setMessages(prev => [...prev, {
             type:"assistant",
-            content:`Could not answer due to an API error.\n\n${msg}`,
+            content:`Could not answer due to an API error.\\n\\n${msg}`,
             trust:{overall:0,retrieval:0,entailment:0,attribution:0},
             sources:[],
             abstained:true
@@ -653,7 +615,6 @@
         setChunks(remaining);
         if(remaining.length){
           setBm25Index(new BM25(remaining.map(c=>c.text)));
-          // best-effort keep embedding alignment:
           setEmbeddings(prev=>{
             const keepIdx = chunks.map((c,i)=>c.docName!==name ? i : -1).filter(i=>i!==-1);
             return keepIdx.map(i=>prev[i]).filter(v=>v!==undefined);
@@ -671,7 +632,7 @@
           const a = await api.current.quickTestModel(embeddingModel, "embedding");
           const b = await api.current.quickTestModel(llmModel, "llm");
           const c = await api.current.quickTestModel(nliModel, "nli");
-          setTestMsg(`Model tests OK:\n- embedding: ${a}\n- llm: ${b}\n- nli: ${c}`);
+          setTestMsg(`Model tests OK:\\n- embedding: ${a}\\n- llm: ${b}\\n- nli: ${c}`);
         } catch(e){
           setTestMsg(api.current.formatAnyError(e));
         }
@@ -702,30 +663,29 @@
             </div>
 
             <div className="sec">
-              <div className="secTitle">API configuration</div>
-              <label>Hugging Face token</label>
+              <div className="secTitle">Proxy configuration</div>
+              <label>Cloudflare Worker URL</label>
               <input
-                type="password"
-                value={apiKey}
-                onChange={(e)=>setApiKey(e.target.value)}
-                placeholder="hf_xxxxxxxxxxxx"
+                type="text"
+                value={proxyUrl}
+                onChange={(e)=>setProxyUrl(e.target.value)}
+                placeholder="https://YOUR-WORKER.workers.dev/hf"
               />
               <div className="help" style={{marginTop:8}}>
-                Token settings that usually fix 403 errors:
-                <br/>• Inference → <b>Make calls to Inference Providers</b>
-                <br/>• Repositories → <b>Read access to all public gated repos you can access</b>
-                <br/>Token page: <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">huggingface.co</a>
+                Proxy mode: browser calls the Worker. The Worker calls Hugging Face using its secret <b>HF_TOKEN</b>.
+                <br/>So there is no HF token field here.
               </div>
 
-              {apiKey && (
-                <div className="status" style={{marginTop:12}}>
-                  <div className="statusRow">
-                    <div className={`dot ${dot.cls}`}>{dot.icon}</div>
-                    <div style={{fontWeight:700}}>{dot.title}</div>
-                  </div>
-                  <div className="statusMsg">{statusMsg}</div>
+              <div className="status" style={{marginTop:12}}>
+                <div className="statusRow">
+                  <div className={`dot ${dot.cls}`}>{dot.icon}</div>
+                  <div style={{fontWeight:700}}>{dot.title}</div>
                 </div>
-              )}
+                <div className="statusMsg">{statusMsg}</div>
+                <div style={{display:"flex", gap:10, marginTop:10}}>
+                  <button className="btn" onClick={validateProxy}>Re-check proxy</button>
+                </div>
+              </div>
             </div>
 
             <div className="sec">
@@ -738,9 +698,6 @@
 
               <label>LLM model (Llama)</label>
               <input type="text" value={llmModel} onChange={(e)=>setLlmModel(e.target.value)} />
-              <div className="help" style={{marginTop:6}}>
-                Tip: if you want Llama 4, paste the exact HF model id here (the collection name alone is not a model id).
-              </div>
 
               <div style={{height:10}} />
 
@@ -748,8 +705,7 @@
               <input type="text" value={nliModel} onChange={(e)=>setNliModel(e.target.value)} />
 
               <div style={{display:"flex", gap:10, marginTop:10}}>
-                <button className="btn" onClick={testModels} disabled={!apiKey}>Test access</button>
-                <button className="btn" onClick={validateKey} disabled={!apiKey}>Re-check token</button>
+                <button className="btn" onClick={testModels} disabled={!ready}>Test access</button>
               </div>
 
               {testMsg && (
@@ -764,9 +720,8 @@
               <div
                 className={`drop ${!ready ? "disabled" : ""}`}
                 onClick={()=> ready && fileInput.current?.click()}
-                onDragOver={(e)=>{ e.preventDefault(); if(ready) e.currentTarget.classList.add("dragover"); }}
-                onDragLeave={(e)=>{ e.currentTarget.classList.remove("dragover"); }}
-                onDrop={(e)=>{ e.preventDefault(); e.currentTarget.classList.remove("dragover"); if(ready) handleUpload(e.dataTransfer.files); }}
+                onDragOver={(e)=>{ e.preventDefault(); }}
+                onDrop={(e)=>{ e.preventDefault(); if(ready) handleUpload(e.dataTransfer.files); }}
               >
                 <div style={{fontWeight:700}}>Drop files or click to upload</div>
                 <div className="help">PDF, DOCX, TXT, JSON</div>
@@ -836,7 +791,7 @@
           <main className="main">
             <header className="hdr">
               <h2>Ask about your documents</h2>
-              <p>Shows exact HF error category + fix when something fails.</p>
+              <p>Proxy-mode: Browser → Cloudflare Worker → Hugging Face.</p>
             </header>
 
             <div className="msgs">
@@ -845,7 +800,7 @@
                   <div style={{fontSize:44, marginBottom:12}}>📄</div>
                   <div style={{fontSize:18, fontWeight:700, marginBottom:6}}>No messages yet</div>
                   <div className="help">
-                    {!ready ? "Enter a token and fix permissions if needed." : chunks.length===0 ? "Upload documents first." : "Ask a question!"}
+                    {!ready ? "Fix proxy connection first." : chunks.length===0 ? "Upload documents first." : "Ask a question!"}
                   </div>
                 </div>
               ) : (
@@ -897,7 +852,7 @@
                   value={input}
                   onChange={(e)=>setInput(e.target.value)}
                   onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); handleSubmit(); } }}
-                  placeholder={!ready ? "Connect token first…" : chunks.length===0 ? "Upload documents first…" : "Ask a question…"}
+                  placeholder={!ready ? "Fix proxy first…" : chunks.length===0 ? "Upload documents first…" : "Ask a question…"}
                   disabled={!ready || chunks.length===0 || loading}
                 />
                 <button className="btn btnPrimary send" onClick={handleSubmit}
