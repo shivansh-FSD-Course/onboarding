@@ -943,13 +943,31 @@ Question: ${question}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
             // Validate API key
             async function validateApiKey() {
+                setError('');
+                setApiKeyValid(false);
+                
                 try {
+                    // First, check if key format is valid
+                    if (!apiKey.startsWith('hf_')) {
+                        setError('API key should start with "hf_"');
+                        return;
+                    }
+                    
+                    setError('⏳ Warming up models (can take 30-60s on first use)...');
                     await apiRef.current.getEmbedding('test');
                     setApiKeyValid(true);
                     setError('');
                 } catch (e) {
-                    setApiKeyValid(false);
-                    setError('Invalid API key or model loading...');
+                    if (e.message.includes('503') || e.message.includes('loading')) {
+                        setError('⏳ Models are loading, please wait...');
+                        // Retry after delay
+                        setTimeout(validateApiKey, 5000);
+                    } else if (e.message.includes('401') || e.message.includes('403')) {
+                        setError('❌ Invalid API key');
+                    } else {
+                        setError(`⏳ Connecting... (${e.message})`);
+                        setTimeout(validateApiKey, 5000);
+                    }
                 }
             }
 
